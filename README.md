@@ -1,17 +1,27 @@
 # Prefect POC
 
+https://docs.prefect.io/orchestration/concepts/cli.html
+
+I have wrapped many of the commands in the `Makefile` of this project.
+
 ## Getting prefect started
 
-Install the prefect cli tool
+Install the prefect cli tool and set the backend to `local` development
 
 ```
-pip install prefect
+make install
 ```
 
 Start the local server
 
 ```
-prefect server start
+make start-server
+```
+
+Start the prefect agent
+
+```
+make start-agent
 ```
 
 Navigate to `http://localhost:8080` to see the UI
@@ -19,14 +29,15 @@ Navigate to `http://localhost:8080` to see the UI
 
 ## Adding 'flows'
 
-Before running any flows, because the server is running locally, we need to change prefect over to use localhost. Do this by running:
+Add a flow by running the file with the prefect flow definition
 
 ```
-prefect backend server
+make calculator
 ```
 
-Add a flow by running the file with the prefect flow
+## Executing a flow
 
+Execute the pre-baked flow via:
 ```
-python3 calculator.py
+make exec-calc
 ```
