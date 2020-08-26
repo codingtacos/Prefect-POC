@@ -3,6 +3,7 @@ import prefect
 from prefect import task, Flow, Parameter
 from prefect.tasks.control_flow import switch, merge
 from prefect.utilities.logging import get_logger
+from prefect.engine.result.base import Result
 
 # Define a task which "parses the inputs" and returns a dict of those inputs
 @task(name="Parse Input")
@@ -32,7 +33,7 @@ with Flow('Arithmetic') as flow:
     result = merge(*operations.values())
 
     # do something with the result...
-    print(result)
+    Result(result)
 
 task_logger = get_logger("Task")
 
