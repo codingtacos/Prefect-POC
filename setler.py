@@ -1,63 +1,82 @@
 import logging
 import prefect
+import json
 from prefect import task, Flow, Parameter
-from prefect.tasks.aws.lambda_function import LambdaInvoke
+from prefect.triggers import all_successful, all_failed
+from prefect.tasks.aws.lambda_function import LambdaInvoke, LambdaList
 from prefect.engine.result.base import Result
 from prefect.utilities.logging import get_logger
 
-
-execution_payload = {
-  "experiment-id": "191125_A00897_0038_AHGWHVDRXX",
-  "sample-bucket": "bioinf-fastq-staging",
-  "bcl-bucket": "sequence-data-transform-novaseq04",
-  "sns-arn-matcher": "arn:aws:sns:us-west-2:841786612905:setler",
-  "dry-run": "False",
-  "mock-bcl2fastq": "True",
-  "log-level": "DEBUG",
-  "sample-sheet": "20191125_RNA_HG_noN_umi.csv",
-  "sequencer": "HiSeq05",
-  "min-tar-bytes": "500"
-}
-
-@task(name="SampleSheetValidator")
+@task(name="SampleSheetValidator", trigger=all_successful)
 def execute_sample_sheet_validator(payload):
     logger = prefect.context.get("logger")
 
-    arn = "arn:aws:lambda:us-east-1:148609763264:function:rp-sample-sheet-validator-lambda:c36bbec267f105dc5ad6825b95b78157d50d6275"
-    result = LambdaInvoke(
-        function_name="rp-sample-sheet-validator-lambda",
-    ).run(payload=payload)
 
-    logger.info('Invoked Lambda')
-    logger.info(result)
-    return result
+    # arn = "arn:aws:lambda:us-east-1:148609763264:function:rp-sample-sheet-validator-lambda:c36bbec267f105dc5ad6825b95b78157d50d6275"
 
-@task(name="BCL2FASTQ")
+    # logger.info("Invoking LambdaList")
+    # lambdas = LambdaList(master_region="us-east-1").run()
+    # logger.info(lambdas)
+
+    stringified_payload = json.dumps(payload)
+    logger.info('Invoking SampleSheetValidator Lambda with params {} and payload {}'.format(payload, stringified_payload))
+    result = LambdaInvoke(function_name='rp-sample-sheet-validator-lambda').run(payload=stringified_payload)
+    # result = LambdaInvoke(function_name="rp-sample-sheet-validator-lambda").run(payload=payload)
+    logger.info('SampleSheetValidator Lambda Invoked')
+    # logger.info(json.dumps(result))
+    logger.info(result.get('StatusCode'))
+    logger.info(result.get('FunctionError'))
+
+    invoke_result = result.get('Payload').read().decode()
+    logger.info(invoke_result)
+
+    return json.loads(invoke_result)
+
+@task(name="BCL2FASTQ", trigger=all_successful)
 def execute_bcl_2_fastq(payload):
     # No built-in support for batch (obviously)
     # TODO: hit transformhub
-    return true
+    return payload
 
-@task(name="InterOp")
+@task(name="InterOp", trigger=all_successful)
 def execute_interop(payload):
     # No built-in support for batch (obviously)
     # TODO: hit transformhub
-    return true
+    return payload
 
-@task(name='Extract Batch Parameters')
+@task(name='Extract Batch Parameters', trigger=all_successful)
 def extract_batch_parameters(result1, result2):
-    return { result1, result2 }
+    return { **result1, **result2 }
 
-@task(name='Update Bioinf DB')
+@task(name='Update Bioinf DB', trigger=all_successful)
 def update_bioinf_db(payload):
-    arn = "arn:aws:lambda:us-east-1:148609763264:function:rp-update-bioinfdb-lambda:20eca2453bc888e9a9a03e85bdb88c819bdd808c"
-    return LambdaInvoke(
-        function_name="rp-update-bioinfdb-lambda",
-        payload=payload
-    )
+    logger = prefect.context.get("logger")
+
+    logger.info('Invoking Update Bioinf DB')
+
+    # arn = "arn:aws:lambda:us-east-1:148609763264:function:rp-update-bioinfdb-lambda:20eca2453bc888e9a9a03e85bdb88c819bdd808c"
+    response = LambdaInvoke(function_name="rp-update-bioinfdb-lambda").run(payload=json.dumps(payload))
+
+    logger.info('StatusCode: {}'.format(response.get('StatusCode')))
+    result = json.loads(response.get('Payload').read().decode())
+
+    logger.info('ResponsePayload: {}'.format(result))
+    return result
 
 with Flow('Mini Setler') as flow:
-    is_valid = execute_sample_sheet_validator(execution_payload)
+    payload = dict({
+        'experiment-id': Parameter('experiment-id'),
+        'sample-bucket': Parameter('sample-bucket'),
+        "bcl-bucket": Parameter("bcl-bucket"),
+        "sns-arn-matcher": Parameter("sns-arn-matcher"),
+        "dry-run": Parameter("dry-run"),
+        "mock-bcl2fastq": Parameter("mock-bcl2fastq"),
+        "log-level": Parameter("log-level"),
+        "sample-sheet": Parameter("sample-sheet"),
+        "sequencer": Parameter("sequencer"),
+        "min-tar-bytes": Parameter("min-tar-bytes")
+    })
+    is_valid = execute_sample_sheet_validator(payload)
 
     bcl_result = execute_bcl_2_fastq(is_valid)
     interop_result = execute_interop(is_valid)
