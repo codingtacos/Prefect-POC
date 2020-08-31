@@ -39,4 +39,6 @@ task_logger = get_logger("Task")
 
 # Register the `Arithmetic` flow in the `Test1` project
 flow.register(project_name='Test1')
+# flow.run()
 
+# print(flow.serialize())
